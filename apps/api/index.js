@@ -1,7 +1,12 @@
 const express = require('express');
 const db = require('./db');
+const path = require('path');
+const multer = require('multer');
+const supabaseServer = require('./supabaseServer');
 const app = express();
 app.use(express.json());
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 app.get('/health', (req, res) => res.json({status: 'ok'}));
 
@@ -85,8 +90,58 @@ app.post('/parts/:id/images', async (req, res) => {
   res.status(201).json(r.rows[0]);
 });
 
+// Upload file to Supabase Storage and register image
+app.post('/parts/:id/upload', upload.single('file'), async (req, res) => {
+  const partId = req.params.id;
+  if (!req.file) return res.status(400).json({ error: 'missing_file' });
+  if (!supabaseServer) return res.status(500).json({ error: 'supabase_not_configured' });
+  const file = req.file;
+  const ext = path.extname(file.originalname) || '';
+  const filename = `parts/${partId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}${ext}`;
+  const bucket = 'parts';
+  try {
+    // ensure bucket exists (best-effort)
+    try {
+      const { data: buckets } = await supabaseServer.storage.listBuckets();
+      const exists = buckets && buckets.find(b => b.name === bucket);
+      if (!exists) {
+        await supabaseServer.storage.createBucket(bucket, { public: true });
+      }
+    } catch (e) {
+      // ignore bucket creation errors
+      console.warn('Could not verify/create bucket:', e.message || e);
+    }
+
+    const { data, error } = await supabaseServer.storage.from(bucket).upload(filename, file.buffer, { contentType: file.mimetype });
+    if (error) return res.status(500).json({ error: error.message });
+    const { data: publicData } = supabaseServer.storage.from(bucket).getPublicUrl(filename);
+    const publicUrl = publicData.publicUrl || publicData?.public_url || publicData;
+    const r = await db.query('INSERT INTO part_images(part_id,url,metadata) VALUES($1,$2,$3) RETURNING *', [partId, publicUrl, JSON.stringify({ originalName: file.originalname })]);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'upload_failed' });
+  }
+});
+
 app.delete('/part_images/:id', async (req, res) => {
   const id = req.params.id;
+  // Optionally delete from storage as well - fetch url and remove object
+  const imgR = await db.query('SELECT * FROM part_images WHERE id=$1', [id]);
+  if (imgR.rows.length) {
+    const url = imgR.rows[0].url;
+    try {
+      // attempt to derive path from public URL
+      if (supabaseServer && url && url.includes('/storage/v1/object/public')) {
+        const parts = url.split('/storage/v1/object/public/');
+        if (parts[1]) {
+          const [bucket, ...rest] = parts[1].split('/');
+          const objectPath = rest.join('/');
+          await supabaseServer.storage.from(bucket).remove([objectPath]);
+        }
+      }
+    } catch (e) { console.warn('Failed to delete storage object', e.message || e); }
+  }
   await db.query('DELETE FROM part_images WHERE id=$1', [id]);
   res.status(204).send();
 });
