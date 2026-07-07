@@ -38,14 +38,19 @@ app.post('/motorcycles', async (req, res) => {
   res.status(201).json(r.rows[0]);
 });
 
-/* Parts */
+/* Parts: list, search (FTS), pagination */
 app.get('/parts', async (req, res) => {
   const q = req.query.q;
+  const limit = parseInt(req.query.limit) || 50;
+  const offset = parseInt(req.query.offset) || 0;
   if (q) {
-    const r = await db.query("SELECT *, ts_rank(to_tsvector('portuguese', coalesce(name,'')), plainto_tsquery('portuguese', $1)) as rank FROM parts WHERE to_tsvector('portuguese', coalesce(name,'')) @@ plainto_tsquery('portuguese', $1) ORDER BY rank DESC", [q]);
+    const r = await db.query(
+      "SELECT p.*, m.name as manufacturer_name, a.name as assembly_name, ts_rank(to_tsvector('portuguese', coalesce(p.name,'')), plainto_tsquery('portuguese', $1)) as rank FROM parts p LEFT JOIN manufacturers m ON p.manufacturer_id = m.id LEFT JOIN assemblies a ON p.assembly_id = a.id WHERE to_tsvector('portuguese', coalesce(p.name,'')) @@ plainto_tsquery('portuguese', $1) ORDER BY rank DESC LIMIT $2 OFFSET $3",
+      [q, limit, offset]
+    );
     res.json(r.rows);
   } else {
-    const r = await db.query('SELECT * FROM parts');
+    const r = await db.query('SELECT p.*, m.name as manufacturer_name, a.name as assembly_name FROM parts p LEFT JOIN manufacturers m ON p.manufacturer_id = m.id LEFT JOIN assemblies a ON p.assembly_id = a.id ORDER BY p.id DESC LIMIT $1 OFFSET $2', [limit, offset]);
     res.json(r.rows);
   }
 });
@@ -53,6 +58,29 @@ app.post('/parts', async (req, res) => {
   const { sku, name, manufacturer_id, assembly_id, description } = req.body;
   const r = await db.query('INSERT INTO parts(sku,name,manufacturer_id,assembly_id,description) VALUES($1,$2,$3,$4,$5) RETURNING *', [sku, name, manufacturer_id, assembly_id, description]);
   res.status(201).json(r.rows[0]);
+});
+
+/* Part detail with images, equivalents and compatibilities */
+app.get('/parts/:id', async (req, res) => {
+  const id = req.params.id;
+  const partR = await db.query('SELECT p.*, m.name as manufacturer_name, a.name as assembly_name FROM parts p LEFT JOIN manufacturers m ON p.manufacturer_id = m.id LEFT JOIN assemblies a ON p.assembly_id = a.id WHERE p.id=$1', [id]);
+  if (!partR.rows.length) return res.status(404).json({ error: 'not_found' });
+  const part = partR.rows[0];
+  const imagesR = await db.query('SELECT * FROM part_images WHERE part_id=$1', [id]);
+  const eqR = await db.query('SELECT ep.*, p2.name as equivalent_name FROM equivalent_parts ep JOIN parts p2 ON ep.equivalent_part_id = p2.id WHERE ep.part_id=$1', [id]);
+  const compR = await db.query('SELECT c.*, mo.id as motorcycle_id, mo.trim, mo.engine, mo.model_id FROM compatibilities c JOIN motorcycles mo ON c.motorcycle_id = mo.id WHERE c.part_id=$1', [id]);
+  part.images = imagesR.rows;
+  part.equivalents = eqR.rows;
+  part.compatibilities = compR.rows;
+  res.json(part);
+});
+
+/* Compatibilities endpoint */
+app.get('/compatibilities', async (req, res) => {
+  const part_id = req.query.part_id;
+  if (!part_id) return res.status(400).json({ error: 'missing_part_id' });
+  const r = await db.query('SELECT c.*, mo.trim, mo.engine FROM compatibilities c JOIN motorcycles mo ON c.motorcycle_id = mo.id WHERE c.part_id=$1', [part_id]);
+  res.json(r.rows);
 });
 
 /* Basic error handler */
