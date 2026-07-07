@@ -66,13 +66,29 @@ app.get('/parts/:id', async (req, res) => {
   const partR = await db.query('SELECT p.*, m.name as manufacturer_name, a.name as assembly_name FROM parts p LEFT JOIN manufacturers m ON p.manufacturer_id = m.id LEFT JOIN assemblies a ON p.assembly_id = a.id WHERE p.id=$1', [id]);
   if (!partR.rows.length) return res.status(404).json({ error: 'not_found' });
   const part = partR.rows[0];
-  const imagesR = await db.query('SELECT * FROM part_images WHERE part_id=$1', [id]);
+  const imagesR = await db.query('SELECT * FROM part_images WHERE part_id=$1 ORDER BY id', [id]);
   const eqR = await db.query('SELECT ep.*, p2.name as equivalent_name FROM equivalent_parts ep JOIN parts p2 ON ep.equivalent_part_id = p2.id WHERE ep.part_id=$1', [id]);
   const compR = await db.query('SELECT c.*, mo.id as motorcycle_id, mo.trim, mo.engine, mo.model_id FROM compatibilities c JOIN motorcycles mo ON c.motorcycle_id = mo.id WHERE c.part_id=$1', [id]);
   part.images = imagesR.rows;
   part.equivalents = eqR.rows;
   part.compatibilities = compR.rows;
   res.json(part);
+});
+
+/* Image management (admin) */
+app.post('/parts/:id/images', async (req, res) => {
+  const partId = req.params.id;
+  const { url, metadata } = req.body;
+  if (!url) return res.status(400).json({ error: 'missing_url' });
+  const metaJson = metadata ? JSON.stringify(metadata) : null;
+  const r = await db.query('INSERT INTO part_images(part_id,url,metadata) VALUES($1,$2,COALESCE($3::jsonb, '{}'::jsonb)) RETURNING *', [partId, url, metaJson]);
+  res.status(201).json(r.rows[0]);
+});
+
+app.delete('/part_images/:id', async (req, res) => {
+  const id = req.params.id;
+  await db.query('DELETE FROM part_images WHERE id=$1', [id]);
+  res.status(204).send();
 });
 
 /* Compatibilities endpoint */
