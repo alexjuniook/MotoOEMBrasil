@@ -1,0 +1,42 @@
+name: CI - Setup and Seed
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main, alexjuniook-saas-motooem-brasil ]
+
+jobs:
+  setup-and-seed:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: motooem
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d motooem" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install API deps
+        working-directory: apps/api
+        run: npm ci
+
+      - name: Run DB seed
+        env:
+          DATABASE_URL: postgres://postgres:password@localhost:5432/motooem
+        working-directory: apps/api
+        run: npm run seed
+
+      - name: Run basic API lint/test (placeholder)
+        run: echo "Add tests and lint steps"
