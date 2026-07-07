@@ -24,9 +24,27 @@ export default function AdminPartImages(){
     setLoading(false)
   }
 
+  const [file, setFile] = useState<File | null>(null)
+
   async function addImage(){
-    if (!url) return
     try{
+      // if a file is selected, upload multipart
+      if (file) {
+        const session = await supabase.auth.getSession();
+        const token = session?.data?.session?.access_token;
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`http://localhost:8080/parts/${id}/upload`, {
+          method: 'POST', headers: token ? { 'Authorization': `Bearer ${token}` } : {}, body: fd
+        });
+        if (!res.ok) throw new Error('upload failed')
+        setFile(null)
+        fetchPart(id as string)
+        return
+      }
+
+      // fallback to URL-based add
+      if (!url) return
       const res = await fetch(`http://localhost:8080/parts/${id}/images`, {
         method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ url })
       })
@@ -38,7 +56,9 @@ export default function AdminPartImages(){
 
   async function deleteImage(imageId:number){
     try{
-      await fetch(`http://localhost:8080/part_images/${imageId}`, { method: 'DELETE' })
+      const session = await supabase.auth.getSession();
+      const token = session?.data?.session?.access_token;
+      await fetch(`http://localhost:8080/part_images/${imageId}`, { method: 'DELETE', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       fetchPart(id as string)
     }catch(err){ console.error(err) }
   }
@@ -49,8 +69,9 @@ export default function AdminPartImages(){
     <main className="p-8">
       <h1 className="text-2xl font-bold">Admin - Imagens da peça {part.name}</h1>
 
-      <div className="mt-4">
-        <input className="border p-2 mr-2 w-1/2" value={url} onChange={e=>setUrl(e.target.value)} placeholder="URL da imagem" />
+      <div className="mt-4 flex gap-4 items-center">
+        <input className="border p-2" type="file" onChange={(e:any)=> setFile(e.target.files?.[0] || null)} />
+        <input className="border p-2 mr-2 w-1/2" value={url} onChange={e=>setUrl(e.target.value)} placeholder="URL da imagem (fallback)" />
         <button className="bg-green-600 text-white px-3 py-2 rounded" onClick={addImage}>Adicionar imagem</button>
       </div>
 
