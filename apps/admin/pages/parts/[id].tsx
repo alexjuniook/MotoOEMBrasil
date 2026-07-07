@@ -1,18 +1,27 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
+import { supabase } from '../../lib/supabaseClient'
 
 export default function AdminPartImages(){
   const router = useRouter()
   const { id } = router.query as { id?: string }
   const [part, setPart] = useState<any>(null)
   const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(true)
 
-  useEffect(()=>{ if (id) fetchPart(id) }, [id])
+  useEffect(()=>{ if (id) init(id) }, [id])
+
+  async function init(id:string){
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return }
+    fetchPart(id)
+  }
 
   async function fetchPart(id:string){
     const res = await fetch(`http://localhost:8080/parts/${id}`)
     const data = await res.json()
     setPart(data)
+    setLoading(false)
   }
 
   async function addImage(){
@@ -34,7 +43,7 @@ export default function AdminPartImages(){
     }catch(err){ console.error(err) }
   }
 
-  if (!part) return <div className="p-8">Carregando...</div>
+  if (loading) return <div className="p-8">Carregando...</div>
 
   return (
     <main className="p-8">
