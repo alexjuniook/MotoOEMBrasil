@@ -1,0 +1,35 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: motooem
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+  api:
+    build: ./apps/api
+    environment:
+      DATABASE_URL: postgres://postgres:password@db:5432/motooem
+    depends_on: [db]
+    ports:
+      - "8080:8080"
+  web:
+    build: ./apps/web
+    ports:
+      - "3000:3000"
+  admin:
+    build: ./apps/admin
+    ports:
+      - "3001:3000"
+  n8n:
+    image: n8nio/n8n
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+    ports:
+      - "5678:5678"
+volumes:
+  db-data: {}

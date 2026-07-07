@@ -1,0 +1,11 @@
+{
+  "name": "motooem-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "echo 'Use individual app scripts'"
+  }
+}
