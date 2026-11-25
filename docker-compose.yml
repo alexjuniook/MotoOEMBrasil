@@ -3,33 +3,36 @@ services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: motooem
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
   api:
     build: ./apps/api
     environment:
-      DATABASE_URL: postgres://postgres:password@db:5432/motooem
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     depends_on: [db]
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
   web:
     build: ./apps/web
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
   admin:
     build: ./apps/admin
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
   n8n:
     image: n8nio/n8n
     environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:?Set N8N_BASIC_AUTH_USER in .env}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:?Set N8N_BASIC_AUTH_PASSWORD in .env}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env}
     ports:
-      - "5678:5678"
+      - "127.0.0.1:5678:5678"
 volumes:
   db-data: {}
